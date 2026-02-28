@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Essentials Flashcards</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1><span class="logo">🐧</span> Linux Essentials <span class="badge">010-160</span></h1>
+      <div class="mode-selector">
+        <button class="mode-btn active" data-mode="learn">Learn</button>
+        <button class="mode-btn" data-mode="random">Random</button>
+        <button class="mode-btn" data-mode="weak">Weak</button>
+        <button class="mode-btn mode-btn-exam" data-mode="exam">Exam</button>
+      </div>
+      <div class="stats">
+        <span id="progress">0/80</span>
+        <span id="mastered">✓ 0 mastered</span>
+      </div>
+    </header>
+
+    <main id="mainContent">
+      <div class="card-container">
+        <div class="card" id="card">
+          <div class="card-inner">
+            <div class="card-front">
+              <p class="card-number" id="cardNum">Question 1 of 80</p>
+              <p class="card-question" id="question"></p>
+              <div class="card-options" id="options"></div>
+              <p class="card-hint">Click to flip • Space = flip • ← → = navigate</p>
+            </div>
+            <div class="card-back">
+              <p class="card-number">Answer</p>
+              <p class="card-answer" id="answer"></p>
+              <p class="card-explanation" id="explanation"></p>
+              <div class="card-actions">
+                <button class="btn-weak" id="btnWeak">Mark weak</button>
+                <button class="btn-mastered" id="btnMastered">Got it!</button>
+                <button class="btn-wrong hidden" id="btnWrong">Got it wrong</button>
+              </div>
+              <p class="card-hint">Click to flip • Space = flip • ← → = navigate</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-buttons">
+        <button class="nav-btn" id="btnPrev" aria-label="Previous">← Prev</button>
+        <button class="nav-btn" id="btnNext" aria-label="Next">Next →</button>
+      </div>
+    </main>
+
+    <section id="examResults" class="exam-results hidden">
+      <div class="results-card">
+        <h2>Exam Complete</h2>
+        <div id="examScore" class="exam-score"></div>
+        <p class="results-sub">70% to pass</p>
+        <button class="btn-retry" id="examRetryBtn">Try Again</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="questions.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
