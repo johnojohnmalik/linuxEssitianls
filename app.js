@@ -1,0 +1,429 @@
+(function() {
+  const STORAGE_KEYS = {
+    weak: 'linux-essentials-weak',
+    mastered: 'linux-essentials-mastered'
+  };
+
+  let currentIndex = 0;
+  let currentDeck = [];
+  let isFlipped = false;
+  let isExamMode = false;
+  let examScore = 0;
+  let examUserAnswers = [];
+  let currentShuffledOptions = null;
+  let examSelectedLetters = [];
+  let examAdvanceTimeout = null;
+
+  const card = document.getElementById('card');
+  const questionEl = document.getElementById('question');
+  const optionsEl = document.getElementById('options');
+  const answerEl = document.getElementById('answer');
+  const explanationEl = document.getElementById('explanation');
+  const cardNumEl = document.getElementById('cardNum');
+  const progressEl = document.getElementById('progress');
+  const masteredEl = document.getElementById('mastered');
+  const btnPrev = document.getElementById('btnPrev');
+  const btnNext = document.getElementById('btnNext');
+  const btnWeak = document.getElementById('btnWeak');
+  const btnMastered = document.getElementById('btnMastered');
+  const btnWrong = document.getElementById('btnWrong');
+  const modeBtns = document.querySelectorAll('.mode-btn');
+  const mainContent = document.getElementById('mainContent');
+  const examResults = document.getElementById('examResults');
+  const examScoreEl = document.getElementById('examScore');
+  const examRetryBtn = document.getElementById('examRetryBtn');
+  const cardHint = document.getElementById('cardHint');
+
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function getWeakIds() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.weak) || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  function getMasteredIds() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.mastered) || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  function setWeakIds(ids) {
+    localStorage.setItem(STORAGE_KEYS.weak, JSON.stringify(ids));
+  }
+
+  function setMasteredIds(ids) {
+    localStorage.setItem(STORAGE_KEYS.mastered, JSON.stringify(ids));
+  }
+
+  function formatAnswerByContent(q) {
+    const ans = q.answer;
+    if (!q.options) return ans;
+    const letters = ans.split('');
+    return letters.map(l => q.options[l]).filter(Boolean).join('\n');
+  }
+
+  function buildDeck(mode) {
+    isExamMode = mode === 'exam';
+    examScore = 0;
+    examUserAnswers = [];
+
+    if (mode === 'exam') {
+      const withOptions = QUESTIONS.filter(q => q.options);
+      const shuffled = shuffle(withOptions);
+      currentDeck = shuffled.slice(0, 40);
+      mainContent.classList.add('exam-mode');
+      examResults.classList.add('hidden');
+    } else {
+      mainContent.classList.remove('exam-mode');
+      if (mode === 'weak') {
+        const weakIds = getWeakIds();
+        currentDeck = QUESTIONS.filter(q => weakIds.includes(q.id));
+        if (currentDeck.length === 0) currentDeck = [...QUESTIONS];
+      } else if (mode === 'random') {
+        currentDeck = shuffle(QUESTIONS);
+      } else {
+        currentDeck = [...QUESTIONS];
+      }
+    }
+
+    currentIndex = 0;
+    isFlipped = false;
+    currentShuffledOptions = null;
+    renderCard();
+  }
+
+  function normalizeAnswer(s) {
+    return (s || '').split('').sort().join('');
+  }
+
+  function renderCard() {
+    const q = currentDeck[currentIndex];
+    if (!q) return;
+    if (isExamMode && !q.options) {
+      if (currentIndex < currentDeck.length - 1) { currentIndex++; renderCard(); }
+      return;
+    }
+
+    questionEl.textContent = q.question;
+    optionsEl.innerHTML = '';
+    examSelectedLetters = [];
+
+    if (q.options) {
+      const keys = Object.keys(q.options);
+      currentShuffledOptions = shuffle(keys);
+
+      currentShuffledOptions.forEach((letter, idx) => {
+        const div = document.createElement('div');
+        div.className = 'option' + (isExamMode ? ' option-selectable' : '');
+        div.textContent = `${String.fromCharCode(65 + idx)}. ${q.options[letter]}`;
+        if (isExamMode) {
+          div.dataset.originalLetter = letter;
+          div.setAttribute('role', 'button');
+          div.setAttribute('tabindex', '0');
+        }
+        optionsEl.appendChild(div);
+      });
+
+      const correctText = formatAnswerByContent(q);
+      answerEl.textContent = 'Correct answer(s):\n\n' + correctText;
+    } else {
+      currentShuffledOptions = null;
+      answerEl.textContent = 'Answer: ' + q.answer;
+    }
+    if (explanationEl) {
+      if (q.explanation) {
+        explanationEl.textContent = 'Why: ' + q.explanation;
+        explanationEl.classList.remove('hidden');
+      } else {
+        explanationEl.textContent = '';
+        explanationEl.classList.add('hidden');
+      }
+    }
+
+    cardNumEl.textContent = `Question ${currentIndex + 1} of ${currentDeck.length}`;
+    card.classList.remove('flipped');
+    isFlipped = false;
+    if (isExamMode) {
+      card.classList.add('exam-no-flip');
+    } else {
+      card.classList.remove('exam-no-flip');
+    }
+
+    updateProgress();
+
+    if (isExamMode) {
+      btnPrev.classList.add('hidden');
+      btnNext.classList.add('hidden');
+      btnWeak.classList.add('hidden');
+      btnMastered.classList.add('hidden');
+      if (btnWrong) btnWrong.classList.add('hidden');
+      if (btnNextExam) btnNextExam.classList.remove('hidden');
+      if (cardHint) cardHint.textContent = 'Select your answer(s), then click Next question. (No flip — your choice is graded.)';
+    } else {
+      btnPrev.classList.remove('hidden');
+      btnPrev.disabled = currentIndex === 0;
+      btnWeak.classList.remove('hidden');
+      btnMastered.classList.remove('hidden');
+      if (btnWrong) btnWrong.classList.add('hidden');
+      btnNext.classList.remove('hidden');
+      btnNext.disabled = currentIndex === currentDeck.length - 1;
+      if (btnNextExam) btnNextExam.classList.add('hidden');
+      if (cardHint) cardHint.textContent = 'Click to flip • Space = flip • ← → = navigate';
+    }
+  }
+
+  function selectExamOption(div, letter, q) {
+    if (!q || currentIndex >= currentDeck.length) return;
+    const isMulti = (q.answer || '').length > 1;
+    if (isMulti) {
+      const idx = examSelectedLetters.indexOf(letter);
+      if (idx >= 0) {
+        examSelectedLetters.splice(idx, 1);
+        div.classList.remove('selected');
+      } else {
+        examSelectedLetters.push(letter);
+        div.classList.add('selected');
+      }
+      const need = (q.answer || '').length;
+      if (examAdvanceTimeout) clearTimeout(examAdvanceTimeout);
+      examAdvanceTimeout = null;
+      if (examSelectedLetters.length >= need) {
+        examAdvanceTimeout = setTimeout(goNextExamQuestion, 300);
+      }
+    } else {
+      if (examAdvanceTimeout) { clearTimeout(examAdvanceTimeout); examAdvanceTimeout = null; }
+      optionsEl.querySelectorAll('.option-selectable').forEach(el => el.classList.remove('selected'));
+      examSelectedLetters = [letter];
+      div.classList.add('selected');
+      examUserAnswers[currentIndex] = letter;
+      examAdvanceTimeout = setTimeout(goNextExamQuestion, 200);
+    }
+  }
+
+  function updateProgress() {
+    const mastered = getMasteredIds();
+    const total = QUESTIONS.length;
+    const count = mastered.length;
+    progressEl.textContent = `${count}/${total}`;
+    masteredEl.textContent = `✓ ${count} mastered`;
+  }
+
+  function flipCard() {
+    isFlipped = !isFlipped;
+    card.classList.toggle('flipped', isFlipped);
+  }
+
+  function goPrev() {
+    if (currentIndex > 0) {
+      currentIndex--;
+      isFlipped = false;
+      renderCard();
+    }
+  }
+
+  function goNext() {
+    if (isExamMode) {
+      goNextExamQuestion();
+    } else {
+      if (currentIndex < currentDeck.length - 1) {
+        currentIndex++;
+        isFlipped = false;
+        renderCard();
+      }
+    }
+  }
+
+  function goNextExamQuestion() {
+    examAdvanceTimeout = null;
+    try {
+      examUserAnswers[currentIndex] = (examSelectedLetters || []).slice().sort().join('');
+    } catch (err) {}
+    if (currentIndex < currentDeck.length - 1) {
+      currentIndex++;
+      isFlipped = false;
+      try {
+        renderCard();
+      } catch (err) {
+        if (currentIndex < currentDeck.length) renderCard();
+      }
+    } else {
+      showExamResults();
+    }
+  }
+
+  function showExamResults() {
+    let correct = 0;
+    for (let i = 0; i < currentDeck.length; i++) {
+      const user = normalizeAnswer(examUserAnswers[i] || '');
+      const right = normalizeAnswer(currentDeck[i].answer);
+      if (user === right) correct++;
+    }
+    const pct = Math.round((correct / currentDeck.length) * 100);
+    mainContent.classList.add('hidden');
+    examResults.classList.remove('hidden');
+    examScoreEl.innerHTML = `
+      <span class="score-number">${correct}/${currentDeck.length}</span>
+      <span class="score-pct">${pct}%</span>
+      <span class="score-grade">Grade: ${pct}/100</span>
+    `;
+    const passThreshold = 70;
+    examResults.classList.toggle('passed', pct >= passThreshold);
+  }
+
+  function markCorrect() {
+    if (isExamMode) {
+      examScore++;
+    } else {
+      const q = currentDeck[currentIndex];
+      if (q) {
+        const mastered = getMasteredIds();
+        if (!mastered.includes(q.id)) {
+          mastered.push(q.id);
+          setMasteredIds(mastered);
+        }
+      }
+    }
+    btnMastered.textContent = '✓';
+    btnMastered.disabled = true;
+    setTimeout(() => {
+      btnMastered.textContent = isExamMode ? 'Got it right' : 'Got it!';
+      btnMastered.disabled = false;
+    }, 800);
+    if (currentIndex < currentDeck.length - 1) {
+      setTimeout(goNext, 400);
+    } else if (isExamMode) {
+      setTimeout(showExamResults, 400);
+    }
+  }
+
+  function markWrong() {
+    if (isExamMode && btnWrong) {
+      btnWrong.classList.add('pressed');
+      setTimeout(() => btnWrong && btnWrong.classList.remove('pressed'), 300);
+      if (currentIndex < currentDeck.length - 1) {
+        setTimeout(goNext, 300);
+      } else {
+        setTimeout(showExamResults, 300);
+      }
+    }
+  }
+
+  function markWeak() {
+    if (isExamMode) return;
+    const q = currentDeck[currentIndex];
+    if (!q) return;
+    const weak = getWeakIds();
+    if (!weak.includes(q.id)) {
+      weak.push(q.id);
+      setWeakIds(weak);
+    }
+    btnWeak.textContent = '✓ Marked';
+    btnWeak.disabled = true;
+    setTimeout(() => {
+      btnWeak.textContent = 'Mark weak';
+      btnWeak.disabled = false;
+    }, 1500);
+  }
+
+  function markMastered() {
+    if (isExamMode) return;
+    const q = currentDeck[currentIndex];
+    if (!q) return;
+    const mastered = getMasteredIds();
+    if (!mastered.includes(q.id)) {
+      mastered.push(q.id);
+      setMasteredIds(mastered);
+    }
+    btnMastered.textContent = '✓ Got it!';
+    btnMastered.disabled = true;
+    updateProgress();
+    setTimeout(() => {
+      btnMastered.textContent = 'Got it!';
+      btnMastered.disabled = false;
+    }, 1000);
+    if (currentIndex < currentDeck.length - 1) {
+      setTimeout(goNext, 500);
+    }
+  }
+
+  card.addEventListener('click', (e) => {
+    if (isExamMode) return;
+    flipCard();
+  });
+
+  btnPrev.addEventListener('click', goPrev);
+  btnNext.addEventListener('click', goNext);
+  btnWeak.addEventListener('click', markWeak);
+  btnMastered.addEventListener('click', markMastered);
+
+  modeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      modeBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      buildDeck(btn.dataset.mode);
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (isExamMode) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      flipCard();
+    } else if (e.code === 'ArrowLeft') goPrev();
+    else if (e.code === 'ArrowRight') goNext();
+  });
+
+  optionsEl.addEventListener('click', (e) => {
+    if (!isExamMode) return;
+    const option = e.target.closest('.option-selectable');
+    if (!option) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const letter = option.dataset.originalLetter;
+    const q = currentDeck[currentIndex];
+    if (!letter || !q) return;
+    selectExamOption(option, letter, q);
+  });
+
+  optionsEl.addEventListener('keydown', (e) => {
+    if (!isExamMode) return;
+    const option = e.target.closest('.option-selectable');
+    if (!option || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    const letter = option.dataset.originalLetter;
+    const q = currentDeck[currentIndex];
+    if (!letter || !q) return;
+    selectExamOption(option, letter, q);
+  });
+
+  if (btnNextExam) {
+    btnNextExam.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!isExamMode) return;
+      goNextExamQuestion();
+    });
+  }
+
+  if (btnWrong) btnWrong.addEventListener('click', markWrong);
+  if (examRetryBtn) {
+    examRetryBtn.addEventListener('click', () => {
+      examResults.classList.add('hidden');
+      mainContent.classList.remove('hidden');
+      buildDeck('exam');
+    });
+  }
+
+  buildDeck('learn');
+})();
